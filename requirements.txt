@@ -1,0 +1,8 @@
+mariadb
+fastapi
+openpyxl
+datetime
+jpholiday
+uvicorn
+gunicorn
+python-dateutil

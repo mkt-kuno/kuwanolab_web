@@ -1,0 +1,56 @@
+@import 'https://fonts.googleapis.com/css?family=Open+Sans';
+
+* {
+	-webkit-box-sizing: border-box;
+	box-sizing: border-box;
+}
+
+body {
+	font-family: 'Open Sans', sans-serif;
+	line-height: 1.75em;
+	font-size: 13px;
+	background-color: #111;
+	color: #aaa;
+}
+
+.calender_table {
+	table-layout: fixed;
+}
+
+.calender_table, .calender_table th, .calender_table td{
+	border-collapse: collapse;
+	border:1px solid #555;
+}
+
+.calender_table .today {
+	color: white;
+	font-weight: bold;
+}
+
+.calender_table th.holiday_red {
+	 background-color: darkred;
+}
+
+.calender_table th.holiday_blue {
+	 background-color: darkblue;
+}
+
+.calender_table th, .calender_table td{
+	height: 56px;
+	padding: 2px 0;
+	border-width: 0px 2px;
+	text-align: center;
+}
+
+.calender_table th:nth-child(1), .calender_table td:nth-child(1){
+	width: 80px;
+}
+
+.calender_table th:nth-child(n + 2), .calender_table td:nth-child(n + 5){
+	min-width: 36px;
+	width: 36px;
+}
+
+.calender_table tr:nth-child(even){
+	background-color: #80808020
+}
