@@ -71,16 +71,35 @@ async def async_john_doe_list():
     query += "WHERE idm_name.name is NULL "
     query += "ORDER BY idm_datetime.`datetime` DESC LIMIT 10;"
     cursor.execute(query)
-    ret = []
+    ret = {}
+    list = []
     for item in cursor.fetchall():
         idm = item[0]
         datetime = item[1]
-        dict = {}
-        dict['idm'] = idm
-        dict['datetime'] = datetime
-        ret.append(dict)
+        if idm not in list:
+            list.append(idm)
+            ret[idm] = str(datetime)
     cursor.close()
     con.close()
+    return ret;
+
+@app.get('/api/today_list')
+async def api_today_list():
+    return fastapi.responses.JSONResponse(await async_today_list())
+
+async def async_today_list():
+    ret = {}
+
+    today = datetime.datetime.today().replace(hour=0, minute=0, second=0, microsecond=0)
+    tomorrow = today + relativedelta(days=1)
+
+    for name in await async_name_list():
+        dict = await async_datetime_list(name, today.strftime("%Y%m%d"), tomorrow.strftime("%Y%m%d"))
+        (enter, exit) = find_enter_exit_time(today, dict["datetime"])
+        list = []
+        for dt in dict["datetime"]:
+            list.append(dt.strftime('%Y-%m-%d %H:%M:%S'))
+        ret[dict["name"]]  = list
     return ret;
 
 def get_holiday_class(day):
