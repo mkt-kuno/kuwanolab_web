@@ -1,37 +1,38 @@
 import os
 import io
+import gc
 import json
 import typing
-import asyncio
-import mariadb
 import fastapi
 import openpyxl
+import resource
 import datetime
 import jpholiday
+import mysql.connector
+import mysql.connector.pooling
 from dateutil.relativedelta import relativedelta
 
+gc.enable()
 app = fastapi.FastAPI()
 
-## Docker内からだとlocalhostは接続不可
-#DB_HOST = "127.0.0.1"
-
-DB_HOST = "felica_db"
+DB_HOST = "kuwanolabserver.iis.u-tokyo.ac.jp"
 DB_NAME = "felica_db"
 DB_USER = "bw304"
 DB_PASS = "UpomPmBu"
 DB_PORT = 3306
+pool = mysql.connector.pooling.MySQLConnectionPool(user=DB_USER, password=DB_PASS, database=DB_NAME, host=DB_HOST, port=DB_PORT, pool_size=16)
 
-async def get_mariadb_con():
-    return mariadb.connect(user=DB_USER, password=DB_PASS, database=DB_NAME, host=DB_HOST, port=DB_PORT)
+def get_mariadb_con():
+    return pool.get_connection()
 
-async def async_datetime_list(name, ymd_from, ymd_to):
+def get_datetime_list(name, ymd_from, ymd_to):
     ret = {}
 
     if name is None or ymd_from is None or ymd_to is None:
         ret["result"] = "error"
         return ret
 
-    con = await get_mariadb_con()
+    con = get_mariadb_con()
     cursor = con.cursor()
     query = "SELECT idm_datetime.`datetime` FROM idm_datetime JOIN idm_name ON (idm_datetime.idm = idm_name.idm) WHERE idm_datetime.`datetime` BETWEEN '"
     query += ymd_from + "' AND '" + ymd_to + "' AND idm_name.name = '" + name +"';"
@@ -45,12 +46,16 @@ async def async_datetime_list(name, ymd_from, ymd_to):
     ret["from"] = ymd_from
     ret["to"] = ymd_to
     ret["datetime"] = list
+
     cursor.close()
+    del cursor
     con.close()
+    del con
+
     return ret
 
-async def async_name_list():
-    con = await get_mariadb_con()
+def get_name_list():
+    con = get_mariadb_con()
     cursor = con.cursor()
     query = "SELECT name FROM idm_name WHERE enable = 1 ORDER BY priority;"
     cursor.execute(query)
@@ -59,12 +64,16 @@ async def async_name_list():
         name = item[0]
         if name not in ret:
             ret.append(name)
+
     cursor.close()
+    del cursor
     con.close()
+    del con
+
     return ret
 
-async def async_john_doe_list():
-    con = await get_mariadb_con()
+def get_john_doe_list():
+    con = get_mariadb_con()
     cursor = con.cursor()
     query  = "SELECT idm_datetime.*,idm_name.name "
     query += "FROM idm_datetime LEFT JOIN idm_name ON (idm_datetime.idm = idm_name.idm) "
@@ -79,28 +88,32 @@ async def async_john_doe_list():
         if idm not in list:
             list.append(idm)
             ret[idm] = str(datetime)
+
     cursor.close()
+    del cursor
     con.close()
-    return ret;
+    del con
+
+    return ret
 
 @app.get('/api/today_list')
-async def api_today_list():
-    return fastapi.responses.JSONResponse(await async_today_list())
+def api_today_list():
+    return fastapi.responses.JSONResponse(get_today_list())
 
-async def async_today_list():
+def get_today_list():
     ret = {}
 
     today = datetime.datetime.today().replace(hour=0, minute=0, second=0, microsecond=0)
     tomorrow = today + relativedelta(days=1)
 
-    for name in await async_name_list():
-        dict = await async_datetime_list(name, today.strftime("%Y%m%d"), tomorrow.strftime("%Y%m%d"))
+    for name in get_name_list():
+        dict = get_datetime_list(name, today.strftime("%Y%m%d"), tomorrow.strftime("%Y%m%d"))
         (enter, exit) = find_enter_exit_time(today, dict["datetime"])
         list = []
         for dt in dict["datetime"]:
             list.append(dt.strftime('%Y-%m-%d %H:%M:%S'))
         ret[dict["name"]]  = list
-    return ret;
+    return ret
 
 def get_holiday_class(day):
     ret = None
@@ -113,21 +126,21 @@ def get_holiday_class(day):
 def is_same_day(day_a, day_b):
     ret = False
     if day_a.year == day_b.year and day_a.month == day_b.month and day_a.day == day_b.day:
-        ret = True;
+        ret = True
     return ret
 
 def is_today(day):
     ret = False
     today = datetime.datetime.today()
     if today.year == day.year and today.month == day.month and today.day == day.day:
-        ret = True;
+        ret = True
     return ret
 
 def is_thismonth(day):
     ret = False
     today = datetime.datetime.today()
     if today.year == day.year and today.month == day.month:
-        ret = True;
+        ret = True
     return ret
 
 def get_datetime_from_to(yearmonth = None):
@@ -157,9 +170,9 @@ def find_enter_exit_time(day, list):
         diff_min = (exit - enter).total_seconds() / 60
         if diff_min < 5:
             exit = None
-    return (enter, exit);
+    return (enter, exit)
 
-async def calender_2d_list(yearmonth, just_mark = False):
+def calender_2d_list(yearmonth, just_mark = False):
     ret = {}
 
     (prevmonth, thismonth, nextmonth) = get_datetime_from_to(yearmonth)
@@ -190,11 +203,11 @@ async def calender_2d_list(yearmonth, just_mark = False):
     ret["Name"] = temp
 
     # Table Body
-    for name in await async_name_list():
+    for name in get_name_list():
         temp = []
 
         day = thismonth
-        dict = await async_datetime_list(name, thismonth.strftime("%Y%m%d"), nextmonth.strftime("%Y%m%d"))
+        dict = get_datetime_list(name, thismonth.strftime("%Y%m%d"), nextmonth.strftime("%Y%m%d"))
         list = dict["datetime"]
         while day < nextmonth:
             (enter, exit) = find_enter_exit_time(day, list)
@@ -212,17 +225,19 @@ async def calender_2d_list(yearmonth, just_mark = False):
 
     return ret
 
-async def calender_html_body(yearmonth):
+def calender_html_body(yearmonth):
+    (prevmonth, thismonth, nextmonth) = get_datetime_from_to(yearmonth)
+    return calender_html_body_from_to(thismonth, nextmonth)
+
+def calender_html_body_from_to(day_from, day_to, show_month = False):
     ret = ""
     ret += "\t"+'<div>'+"\r\n"
     ret += "\t\t"+'<center><table class="calender_table">'+"\r\n"
     ret += "\t\t\t"+'<tr><th>Name</th>'
 
-    (prevmonth, thismonth, nextmonth) = get_datetime_from_to(yearmonth)
-
-    day = thismonth
+    day = day_from
     # Table Header
-    while day < nextmonth:
+    while day < day_to:
         holiday_class = get_holiday_class(day)
         today = is_today(day)
 
@@ -234,19 +249,21 @@ async def calender_html_body(yearmonth):
             ret += '<th class="%s">' % holiday_class
         else:
             ret += '<th>'
-
-        ret += day.strftime("%d<br>%a")
+        if show_month:
+            ret += day.strftime("%b<br>%d<br>%a")
+        else:
+            ret += day.strftime("%d<br>%a")
         ret += "</th>"
         day += datetime.timedelta(days=1)
-    ret += '</tr>'+"\r\n";
+    ret += '</tr>'+"\r\n"
 
     # Table Body
-    for name in await async_name_list():
+    for name in get_name_list():
         ret += "\t\t\t"+'<tr><td>'+ name + '</td>'
-        day = thismonth
-        dict = await async_datetime_list(name, thismonth.strftime("%Y%m%d"), nextmonth.strftime("%Y%m%d"))
+        day = day_from
+        dict = get_datetime_list(name, day_from.strftime("%Y%m%d"), day_to.strftime("%Y%m%d"))
         list = dict["datetime"]
-        while day < nextmonth:
+        while day < day_to:
             (enter, exit) = find_enter_exit_time(day, list)
             if is_today(day):
                 ret += '<td class="today">'
@@ -258,27 +275,27 @@ async def calender_html_body(yearmonth):
                 ret += '<br>' + exit.strftime("%H:%M")
             ret += '</td>'
             day += datetime.timedelta(days=1)
-        ret += '</tr>' + "\r\n";
+        ret += '</tr>' + "\r\n"
 
     ret += "\t\t"+'</table></center>'+"\r\n"
     ret += "\t"+'</div>'+"\r\n"
     return ret
 
 @app.get('/api/name_list')
-async def api_name_list():
-    return fastapi.responses.JSONResponse(await async_name_list())
+def api_name_list():
+    return fastapi.responses.JSONResponse(get_name_list())
 
 @app.get('/api/john_doe_list')
-async def api_john_doe_list():
-    return fastapi.responses.JSONResponse(await async_john_doe_list())
+def api_john_doe_list():
+    return fastapi.responses.JSONResponse(get_john_doe_list())
 
-@app.get('/api/async_datetime_list')
-async def api_async_datetime_list(
+@app.get('/api/get_datetime_list')
+def api_get_datetime_list(
     name: typing.Optional[str] = None,
     ymd_from: typing.Optional[str] = None,
     ymd_to: typing.Optional[str] = None):
 
-    ret = await async_datetime_list(name, ymd_from, ymd_to)
+    ret = get_datetime_list(name, ymd_from, ymd_to)
     list = ret['datetime']
 
     override = []
@@ -289,31 +306,44 @@ async def api_async_datetime_list(
     return fastapi.responses.JSONResponse(ret)
 
 @app.get('/favicon.ico')
-async def favicon():
+def favicon():
     return fastapi.responses.FileResponse('favicon.ico')
 
 @app.get('/dark-theme.css')
-async def favicon():
+def favicon():
     return fastapi.responses.FileResponse('dark-theme.css')
 
 @app.get('/calender')
-async def app_calprev_next_button_htmlender(yearmonth: typing.Optional[str] = None):
+def app_calprev_next_button_htmlender(yearmonth: typing.Optional[str] = None):
     if yearmonth is None:
         yearmonth = datetime.datetime.today().strftime('%Y-%m')
 
     ret = ""
-    ret += header_html(yearmonth, False)
-    ret += await calender_html_body(yearmonth)
+    ret += header_html(False)
+    ret += calender_html_body(yearmonth)
+    ret += footer_html()
+
+    return fastapi.responses.HTMLResponse(ret)
+
+@app.get("/weekly_calender")
+def app_get_weekly_calender():
+    today = datetime.datetime.today().replace(hour=0, minute=0, second=0, microsecond=0)
+    day_from = today - relativedelta(days=12)
+    day_to = today + relativedelta(days=2)
+
+    ret = ""
+    ret += header_html(True)
+    ret += calender_html_body_from_to(day_from, day_to, True)
     ret += footer_html()
 
     return fastapi.responses.HTMLResponse(ret)
 
 @app.get('/api/calender_json')
-async def app_get_calender_json(yearmonth: typing.Optional[str] = None):
+def app_get_calender_json(yearmonth: typing.Optional[str] = None):
     if yearmonth is None:
         yearmonth = datetime.datetime.today().strftime('%Y-%m')
 
-    ret = await calender_2d_list(yearmonth, False)
+    ret = calender_2d_list(yearmonth, False)
 
     return fastapi.responses.JSONResponse(ret)
 
@@ -343,7 +373,7 @@ def output_button_html(yearmonth):
     ret += "\t" + '</div>' + "\r\n"
     return ret
 
-def header_html(yearmonth, refresh = True):
+def header_html(refresh = True):
     ret  = '<!DOCTYPE html>' + "\r\n"
     ret += '<html>' + "\r\n"
     ## --> Start Header
@@ -356,7 +386,7 @@ def header_html(yearmonth, refresh = True):
     ret += "\t" + '<meta http-equiv="Pragma" content="no-cache" />' + "\r\n"
     ret += "\t" + '<meta http-equiv="Expires" content="0" />' + "\r\n"
     if refresh is True:
-        ret += "\t" + '<meta http-equiv="refresh" content="2">' + "\r\n"
+        ret += "\t" + '<meta http-equiv="refresh" content="3">' + "\r\n"
     ret += "\t" + '<title>Bw304 Entry/Exit Record</title>' + "\r\n"
     ret += '</head>' + "\r\n"
     ## <-- End Header
@@ -368,23 +398,23 @@ def footer_html():
     ret += '</html>' + "\r\n"
     return ret
 
-async def mode_html(yearmonth):
+def mode_html(yearmonth):
     (prevmonth, thismonth, nextmonth) = get_datetime_from_to(yearmonth)
     refresh = True
     if is_thismonth(thismonth) is not True:
         refresh = False
 
     ret = ""
-    ret += header_html(yearmonth, refresh)
+    ret += header_html(refresh)
     ret += prev_next_button_html(yearmonth)
-    ret += await calender_html_body(yearmonth)
+    ret += calender_html_body(yearmonth)
     ret += output_button_html(yearmonth)
     ret += footer_html()
 
     return fastapi.responses.HTMLResponse(ret)
 
-async def mode_csv(yearmonth):
-    dict = await calender_2d_list(yearmonth, True)
+def mode_csv(yearmonth):
+    dict = calender_2d_list(yearmonth, True)
     headers = {}
     headers["Content-Description"] = "File Transfer"
     headers["Content-Disposition"] = "attachment; filename=%s.csv" % yearmonth
@@ -403,8 +433,8 @@ async def mode_csv(yearmonth):
 
     return fastapi.responses.Response(content=ret, headers=headers)
 
-async def mode_excel(yearmonth):
-    dict = await calender_2d_list(yearmonth, False)
+def mode_excel(yearmonth):
+    dict = calender_2d_list(yearmonth, False)
     headers = {}
     headers["Content-Description"] = "File Transfer"
     headers["Content-Disposition"] = "attachment; filename=%s.xlsx" % yearmonth
@@ -434,20 +464,23 @@ async def mode_excel(yearmonth):
 
     return fastapi.responses.Response(content=ret, headers=headers)
 
+
 @app.get("/")
-async def root(
+def root(
     yearmonth: typing.Optional[str] = None,
     mode: typing.Optional[str] = None):
+
+    gc.collect()
 
     if yearmonth is None:
         yearmonth = datetime.datetime.today().strftime('%Y-%m')
 
     if mode is None:
-        return await mode_html(yearmonth)
+        return mode_html(yearmonth)
     elif mode == "csv":
-        return await mode_csv(yearmonth)
+        return mode_csv(yearmonth)
     elif mode == "xlsx":
-        return await mode_excel(yearmonth)
+        return mode_excel(yearmonth)
 
 if __name__ == "__main__":
     import uvicorn

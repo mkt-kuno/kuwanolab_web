@@ -1,4 +1,4 @@
-mariadb
+mysql-connector-python
 fastapi
 openpyxl
 datetime

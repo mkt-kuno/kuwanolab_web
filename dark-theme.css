@@ -15,6 +15,7 @@ body {
 
 .calender_table {
 	table-layout: fixed;
+    margin: 10px 0px;
 }
 
 .calender_table, .calender_table th, .calender_table td{
@@ -36,19 +37,20 @@ body {
 }
 
 .calender_table th, .calender_table td{
-	height: 50px;
+	height: 54px;
 	padding: 2px 0;
 	border-width: 0px 2px;
 	text-align: center;
 }
 
 .calender_table th:nth-child(1), .calender_table td:nth-child(1){
-	width: 80px;
+	width: 70px;
+    padding: 1px 2px;
 }
 
 .calender_table th:nth-child(n + 2), .calender_table td:nth-child(n + 5){
-	min-width: 36px;
-	width: 36px;
+	min-width: 37px;
+	width: 37px;
 }
 
 .calender_table tr:nth-child(even){

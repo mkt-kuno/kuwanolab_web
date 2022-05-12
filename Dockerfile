@@ -10,5 +10,7 @@ WORKDIR /opt/app
 
 EXPOSE 80
 
-#CMD ["gunicorn", "main:app", "--reload", "-w", "8", "-k", "uvicorn.workers.UvicornWorker", "-b", "0.0.0.0:80"]
+#CMD ["gunicorn", "main:app", "--reload", "-w", "4", "-k", "uvicorn.workers.UvicornWorker", "-b", "0.0.0.0:80"]
+#CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "80"]
 CMD ["uvicorn", "main:app", "--reload", "--host", "0.0.0.0", "--port", "80"]
+
