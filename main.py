@@ -328,6 +328,19 @@ def app_calprev_next_button_htmlender(yearmonth: typing.Optional[str] = None):
 @app.get("/weekly_calender")
 def app_get_weekly_calender():
     today = datetime.datetime.today().replace(hour=0, minute=0, second=0, microsecond=0)
+    day_from = today - relativedelta(days=7)
+    day_to = today + relativedelta(days=2)
+
+    ret = ""
+    ret += header_html(True)
+    ret += calender_html_body_from_to(day_from, day_to, True)
+    ret += footer_html()
+
+    return fastapi.responses.HTMLResponse(ret)
+
+@app.get("/two_weekl_calender")
+def app_get_weekly_calender():
+    today = datetime.datetime.today().replace(hour=0, minute=0, second=0, microsecond=0)
     day_from = today - relativedelta(days=12)
     day_to = today + relativedelta(days=2)
 
